@@ -1,0 +1,8 @@
+{
+  "config": {
+    "code-block-style": { "style": "fenced" },
+    "table-column-style": { "style": "compact" }
+  },
+  "gitignore": true,
+  "globs": ["**/*.md"]
+}
