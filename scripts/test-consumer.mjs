@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,7 +11,7 @@ import { z } from "zod/v4";
 
 await test(
   "the installed executable serves MCP and verifies an approved package when provisioned",
-  { timeout: 600_000 },
+  { timeout: 750_000 },
   async (context) => {
     const consumer = await mkdtemp(
       path.join(tmpdir(), "lean-plugin-consumer-")
@@ -39,6 +39,23 @@ await test(
         stdio: "pipe"
       }
     );
+
+    const server = path.join(
+      consumer,
+      "node_modules/@ririnto/lean-plugin/dist/server.js"
+    );
+    for (const value of ["240.5", "239", "601"]) {
+      const invalid = spawnSync(process.execPath, [server], {
+        encoding: "utf-8",
+        env: { LEAN_PLUGIN_LAKE_CHECK_TIMEOUT_SECONDS: value },
+        timeout: 5000
+      });
+      assert.equal(invalid.status, 1, `Setting ${value} must fail at startup`);
+      assert.match(
+        invalid.stderr,
+        /LEAN_PLUGIN_LAKE_CHECK_TIMEOUT_SECONDS must be a whole number of seconds from 240 to 600/u
+      );
+    }
 
     const { LEAN_PLUGIN_TOOLCHAIN } = process.env;
     const project = path.join(consumer, "fixture");
@@ -72,12 +89,7 @@ await test(
     await client.connect(
       new StdioClientTransport({
         command: process.execPath,
-        args: [
-          path.join(
-            consumer,
-            "node_modules/@ririnto/lean-plugin/dist/server.js"
-          )
-        ],
+        args: [server],
         env: {
           LEAN_PLUGIN_PROJECT: project,
           LEAN_PLUGIN_TRACE: "1",
@@ -108,7 +120,7 @@ await test(
           name,
           arguments: input
         },
-        { timeout: 180_000 }
+        { timeout: 300_000 }
       );
       const message = z
         .tuple([z.object({ type: z.literal("text"), text: z.string() })])

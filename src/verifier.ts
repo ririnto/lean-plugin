@@ -29,12 +29,28 @@ interface CommandResult {
   readonly output: string;
 }
 
+const defaultLakeCheckSeconds = 240;
+const maxLakeCheckSeconds = 600;
+const lakeCheckSetting = process.env.LEAN_PLUGIN_LAKE_CHECK_TIMEOUT_SECONDS;
+const lakeCheckSeconds = Number(lakeCheckSetting ?? defaultLakeCheckSeconds);
+
+if (
+  lakeCheckSetting !== undefined &&
+  (!/^\d{3}$/u.test(lakeCheckSetting) ||
+    lakeCheckSeconds < defaultLakeCheckSeconds ||
+    lakeCheckSeconds > maxLakeCheckSeconds)
+) {
+  throw new Error(
+    `LEAN_PLUGIN_LAKE_CHECK_TIMEOUT_SECONDS must be a whole number of seconds from ${defaultLakeCheckSeconds} to ${maxLakeCheckSeconds}.`
+  );
+}
+
 const phaseTimeout = {
   "lean version": 5000,
   "bubblewrap lookup": 5000,
   "nested bubblewrap": 15_000,
   "lake diagnostics": 120_000,
-  "lake check": 120_000
+  "lake check": lakeCheckSeconds * 1000
 } as const;
 
 type Phase = keyof typeof phaseTimeout;
