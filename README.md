@@ -22,6 +22,15 @@ It does not ship or download Lean, Mathlib, or project dependencies.
    - `LEAN_PLUGIN_PROJECT`: Absolute path to the approved Lake workspace root.
    - `LEAN_PLUGIN_TOOLCHAIN`: Absolute path to the unpacked Lean Linux release.
 
+The `lake check` phase defaults to 240 seconds.
+To increase it, set `LEAN_PLUGIN_LAKE_CHECK_TIMEOUT_SECONDS` in the server's
+startup environment to whole seconds from 240 to 600.
+An invalid setting prevents the server from starting.
+This setting does not change diagnostics or sandbox probe limits.
+Configure the MCP client to wait longer than the selected limit plus 25 seconds
+for the sandbox probes.
+A server-side timeout returns `unavailable`.
+
 Use elan and the existing Lean editor extension for local editing.
 The server reports verification as unavailable when Linux isolation or the exact
 toolchain is missing; it does not run Lean directly as a fallback.
