@@ -143,6 +143,11 @@ await test(
       const rejected = await call("lean_verify", {});
       assert.equal(rejected.status, "failed", rejected.output);
       assert.match(rejected.output, /sorryAx|sorry/u);
+
+      await rm(path.join(project, "lake-manifest.json"));
+      const unprepared = await call("lean_verify", {});
+      assert.equal(unprepared.status, "unavailable", unprepared.output);
+      assert.match(unprepared.output, /lake-manifest\.json/u);
     }
   }
 );

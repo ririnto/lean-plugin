@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import type { ExecFileException } from "node:child_process";
-import { access, cp, mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { cp, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -94,6 +94,9 @@ const canonicalSource = async (project: string, file: string) => {
   return info.isFile() ? `/project/${path.relative(project, canonical)}` : null;
 };
 
+const whichAlternative = "/etc/alternatives/which";
+const whichDebianutils = "/usr/bin/which.debianutils";
+
 const namespaceArgs = async (toolchain: string) => {
   const mounts = await Promise.all(
     roots.map(async (root) => {
@@ -101,6 +104,8 @@ const namespaceArgs = async (toolchain: string) => {
       return source === null ? [] : ["--ro-bind", source, root];
     })
   );
+  const whichTarget = await realpath(whichAlternative).catch(() => null);
+
   return [
     "--unshare-all",
     "--die-with-parent",
@@ -114,6 +119,12 @@ const namespaceArgs = async (toolchain: string) => {
     "/tmp",
     "--dir",
     "/home/lean",
+    "--dir",
+    "/root",
+    "--dir",
+    "/run/user",
+    "--dir",
+    "/var",
     "--setenv",
     "HOME",
     "/home/lean",
@@ -127,6 +138,10 @@ const namespaceArgs = async (toolchain: string) => {
     "COMPARATOR_BWRAP",
     bubblewrap,
     ...mounts.flat(),
+    // Lake runs `which` even for an absolute executable path.
+    ...(whichTarget === whichDebianutils
+      ? ["--symlink", whichDebianutils, whichAlternative]
+      : []),
     "--ro-bind",
     toolchain,
     "/toolchain"
@@ -164,6 +179,58 @@ const approvedPaths = async (projectInput: string, toolchainInput: string) => {
   return { project, toolchain };
 };
 
+const probeProofSandbox = async (
+  namespace: readonly string[]
+): Promise<Result | null> => {
+  const lookup = await execute([...namespace, "--", "which", bubblewrap]);
+  if (lookup.code !== 0 || lookup.output !== bubblewrap) {
+    return {
+      status: "unavailable",
+      output: `Lake cannot resolve Bubblewrap inside the outer sandbox. ${
+        lookup.output
+      }`
+    };
+  }
+
+  const nested = await execute([
+    ...namespace,
+    "--",
+    bubblewrap,
+    "--unshare-all",
+    "--die-with-parent",
+    "--new-session",
+    "--ro-bind",
+    "/",
+    "/",
+    "--tmpfs",
+    "/home",
+    "--tmpfs",
+    "/root",
+    "--tmpfs",
+    "/run/user",
+    "--tmpfs",
+    "/run",
+    "--tmpfs",
+    "/var",
+    "--tmpfs",
+    "/tmp",
+    "--dev",
+    "/dev",
+    "--proc",
+    "/proc",
+    "--chdir",
+    "/",
+    "--",
+    "/bin/true"
+  ]);
+  return nested.code === 0
+    ? null
+    : {
+        status: "unavailable",
+        output: `Lake's nested Bubblewrap sandbox could not start. ${nested.output}`
+      };
+};
+
 const checkPackage = async (
   project: string,
   namespace: readonly string[],
@@ -178,10 +245,6 @@ const checkPackage = async (
       filter: (entry) =>
         !path.relative(project, entry).split(path.sep).includes(".git")
     });
-    if (source === null) {
-      await access(path.join(copy, "lake-manifest.json"));
-    }
-
     const { code, output } = await execute([
       ...namespace,
       "--bind",
@@ -252,6 +315,12 @@ export const runLean = async (operation: Operation): Promise<Result> => {
         status: "unavailable",
         output: `The Linux sandbox must start official Lean ${leanVersion}.`
       };
+    }
+    if (operation.kind === "verify") {
+      const missing = await probeProofSandbox(namespace);
+      if (missing !== null) {
+        return missing;
+      }
     }
     return await checkPackage(project, namespace, source);
   } catch {
