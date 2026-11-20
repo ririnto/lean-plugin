@@ -1,0 +1,41 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  linux-proof:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - name: Install the managed package manager
+        run: |-
+          npm install --global "$(node --print 'require("./package.json").packageManager')"
+      - name: Install the official Lean toolchain and Bubblewrap
+        run: |-
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap zstd
+          curl --fail --silent --show-error --location \
+            https://github.com/leanprover/lean4/releases/download/v4.36.0/lean-4.36.0-linux.tar.zst \
+            --output "$RUNNER_TEMP/lean.tar.zst"
+          mkdir -p "$RUNNER_TEMP/lean"
+          tar --extract --zstd --file "$RUNNER_TEMP/lean.tar.zst" \
+            --directory "$RUNNER_TEMP/lean" --strip-components=1
+      - name: Check the installed MCP package and Lean proofs
+        env:
+          LEAN_PLUGIN_TOOLCHAIN: ${{ runner.temp }}/lean
+        run: |-
+          pnpm install --frozen-lockfile
+          pnpm run check
