@@ -29,27 +29,48 @@ interface CommandResult {
   readonly output: string;
 }
 
+const phaseTimeout = {
+  "lean version": 5000,
+  "bubblewrap lookup": 5000,
+  "nested bubblewrap": 15_000,
+  "lake diagnostics": 120_000,
+  "lake check": 120_000
+} as const;
+
+type Phase = keyof typeof phaseTimeout;
+
+const tracePhase = (message: string) => {
+  if (process.env.LEAN_PLUGIN_TRACE === "1") {
+    process.stderr.write(`[lean-plugin] ${message}\n`);
+  }
+};
+
 const execute = promisify(
   (
+    phase: Phase,
     args: readonly string[],
     done: (error: null, result: CommandResult) => void
   ) => {
+    const started = performance.now();
+    tracePhase(`${phase} started (limit ${phaseTimeout[phase]} ms)`);
     const onExit = (
       error: ExecFileException | null,
       stdout: string,
       stderr: string
     ) => {
+      const output = `${stdout}${stderr}`.trim();
+      const elapsed = Math.round(performance.now() - started);
       if (error !== null && typeof error.code !== "number") {
+        tracePhase(`${phase} did not complete (${elapsed} ms)`);
         done(null, {
           code: null,
           output:
-            "The verifier could not start or exceeded its execution limits."
+            `${phase} could not start or exceeded its execution limits.\n${output.slice(-2048)}`.trim()
         });
       } else {
-        done(null, {
-          code: typeof error?.code === "number" ? error.code : 0,
-          output: `${stdout}${stderr}`.trim()
-        });
+        const code = typeof error?.code === "number" ? error.code : 0;
+        tracePhase(`${phase} exited ${code} (${elapsed} ms)`);
+        done(null, { code, output });
       }
     };
     execFile(
@@ -60,7 +81,7 @@ const execute = promisify(
         env: {},
         killSignal: "SIGKILL",
         maxBuffer: 512 * 1024,
-        timeout: 120_000
+        timeout: phaseTimeout[phase]
       },
       onExit
     );
@@ -182,7 +203,12 @@ const approvedPaths = async (projectInput: string, toolchainInput: string) => {
 const probeProofSandbox = async (
   namespace: readonly string[]
 ): Promise<Result | null> => {
-  const lookup = await execute([...namespace, "--", "which", bubblewrap]);
+  const lookup = await execute("bubblewrap lookup", [
+    ...namespace,
+    "--",
+    "which",
+    bubblewrap
+  ]);
   if (lookup.code !== 0 || lookup.output !== bubblewrap) {
     return {
       status: "unavailable",
@@ -192,7 +218,7 @@ const probeProofSandbox = async (
     };
   }
 
-  const nested = await execute([
+  const nested = await execute("nested bubblewrap", [
     ...namespace,
     "--",
     bubblewrap,
@@ -245,17 +271,20 @@ const checkPackage = async (
       filter: (entry) =>
         !path.relative(project, entry).split(path.sep).includes(".git")
     });
-    const { code, output } = await execute([
-      ...namespace,
-      "--bind",
-      copy,
-      "/project",
-      "--chdir",
-      "/project",
-      "--",
-      "/toolchain/bin/lake",
-      ...(source === null ? ["check"] : ["lean", source])
-    ]);
+    const { code, output } = await execute(
+      source === null ? "lake check" : "lake diagnostics",
+      [
+        ...namespace,
+        "--bind",
+        copy,
+        "/project",
+        "--chdir",
+        "/project",
+        "--",
+        "/toolchain/bin/lake",
+        ...(source === null ? ["check"] : ["lean", source])
+      ]
+    );
     if (code === 0) {
       return { status: "passed", output };
     }
@@ -301,7 +330,7 @@ export const runLean = async (operation: Operation): Promise<Result> => {
       };
     }
     const namespace = await namespaceArgs(toolchain);
-    const probe = await execute([
+    const probe = await execute("lean version", [
       ...namespace,
       "--",
       "/toolchain/bin/lean",

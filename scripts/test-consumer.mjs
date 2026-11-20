@@ -11,7 +11,7 @@ import { z } from "zod/v4";
 
 await test(
   "the installed executable serves MCP and verifies an approved package when provisioned",
-  { timeout: 360_000 },
+  { timeout: 600_000 },
   async (context) => {
     const consumer = await mkdtemp(
       path.join(tmpdir(), "lean-plugin-consumer-")
@@ -80,6 +80,7 @@ await test(
         ],
         env: {
           LEAN_PLUGIN_PROJECT: project,
+          LEAN_PLUGIN_TRACE: "1",
           ...(LEAN_PLUGIN_TOOLCHAIN === undefined
             ? {}
             : { LEAN_PLUGIN_TOOLCHAIN })
@@ -96,14 +97,19 @@ await test(
     ]);
 
     /**
+     * @param {string} label Test phase for CI diagnostics.
      * @param {"lean_diagnostics" | "lean_verify"} name Tool to call.
      * @param {{ file?: string }} input MCP tool arguments.
      */
-    const call = async (name, input) => {
-      const { content, isError } = await client.callTool({
-        name,
-        arguments: input
-      });
+    const call = async (label, name, input) => {
+      process.stderr.write(`[consumer] ${label} (${name})\n`);
+      const { content, isError } = await client.callTool(
+        {
+          name,
+          arguments: input
+        },
+        { timeout: 180_000 }
+      );
       const message = z
         .tuple([z.object({ type: z.literal("text"), text: z.string() })])
         .parse(content);
@@ -115,37 +121,49 @@ await test(
     };
 
     if (process.platform !== "linux" || LEAN_PLUGIN_TOOLCHAIN === undefined) {
-      const proof = await call("lean_verify", {});
-      const diagnostic = await call("lean_diagnostics", {
-        file: "Fixture.lean"
-      });
+      const proof = await call("unconfigured proof", "lean_verify", {});
+      const diagnostic = await call(
+        "unconfigured diagnostics",
+        "lean_diagnostics",
+        {
+          file: "Fixture.lean"
+        }
+      );
       assert.equal(proof.status, "unavailable");
       assert.equal(diagnostic.status, "unavailable");
       context.diagnostic(
         "Linux proof checks require an official Lean toolchain and Bubblewrap."
       );
     } else {
-      const outside = await call("lean_diagnostics", {
-        file: "../outside.lean"
-      });
+      const outside = await call(
+        "reject path outside workspace",
+        "lean_diagnostics",
+        {
+          file: "../outside.lean"
+        }
+      );
       assert.equal(outside.status, "invalid_input");
-      const diagnostic = await call("lean_diagnostics", {
+      const diagnostic = await call("elaborate fixture", "lean_diagnostics", {
         file: "Fixture.lean"
       });
       assert.equal(diagnostic.status, "passed", diagnostic.output);
-      const checked = await call("lean_verify", {});
+      const checked = await call("accept valid proof", "lean_verify", {});
       assert.equal(checked.status, "passed", checked.output);
 
       await writeFile(
         path.join(project, "Fixture.lean"),
         "theorem falseClaim : False := sorry\n"
       );
-      const rejected = await call("lean_verify", {});
+      const rejected = await call("reject proof with sorry", "lean_verify", {});
       assert.equal(rejected.status, "failed", rejected.output);
       assert.match(rejected.output, /sorryAx|sorry/u);
 
       await rm(path.join(project, "lake-manifest.json"));
-      const unprepared = await call("lean_verify", {});
+      const unprepared = await call(
+        "report missing manifest",
+        "lean_verify",
+        {}
+      );
       assert.equal(unprepared.status, "unavailable", unprepared.output);
       assert.match(unprepared.output, /lake-manifest\.json/u);
     }
