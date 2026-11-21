@@ -26,11 +26,10 @@ Import only the modules the proof needs.
 
 The MCP excludes every `.git` path when it copies the workspace.
 It runs Lake in an outer namespace with no network access.
-Lake can request network access in its own [workspace
-resolver][lake-workspace-resolver] and [`lake check`
+`lake check` requests network access for its [dependency
 resolver][lake-check-resolver].
-Lake uses [local Git metadata][lake-git] to resolve locked Git revisions and
-can [try to fetch a missing revision][lake-fetch].
+For locked Git revisions, Lake [checks local Git metadata and can try to fetch
+a missing revision][lake-git].
 A prepopulated `.lake/packages` directory or build cache alone leaves offline
 dependency resolution unverified.
 
@@ -43,7 +42,5 @@ Require `failed` with a `sorryAx` rejection.
 
 [check]: https://lean-lang.org/doc/reference/4.36.0/Build-Tools-and-Distribution/Lake/#check
 [mathlib-toolchain]: https://github.com/leanprover-community/mathlib4/blob/v4.36.0/lean-toolchain
-[lake-workspace-resolver]: https://github.com/leanprover/lean4/blob/v4.36.0/src/lake/Lake/CLI/Check.lean#L288-L304
 [lake-check-resolver]: https://github.com/leanprover/lean4/blob/v4.36.0/src/lake/Lake/CLI/Check.lean#L311-L327
-[lake-git]: https://github.com/leanprover/lean4/blob/v4.36.0/src/lake/Lake/Load/Materialize.lean#L40-L74
-[lake-fetch]: https://github.com/leanprover/lean4/blob/v4.36.0/src/lake/Lake/Load/Materialize.lean#L74-L77
+[lake-git]: https://github.com/leanprover/lean4/blob/v4.36.0/src/lake/Lake/Load/Materialize.lean#L40-L77
