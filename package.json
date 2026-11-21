@@ -11,7 +11,6 @@
     "lean-plugin": "dist/server.js"
   },
   "files": [
-    "skills/",
     "dist/"
   ],
   "type": "module",

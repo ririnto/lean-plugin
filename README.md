@@ -1,7 +1,7 @@
 # Lean plugin
 
 Run Lean file diagnostics and verify a Lake package through MCP stdio.
-The npm package provides the MCP adapter and the Lean verification skill.
+The npm package provides the MCP adapter.
 It does not ship or download Lean, Mathlib, or project dependencies.
 
 ## Configure the server
@@ -22,7 +22,10 @@ It does not ship or download Lean, Mathlib, or project dependencies.
 
 Lean core and Std are the verified default.
 Mathlib support through the offline MCP is unverified.
-See the [Mathlib verification criteria][mathlib].
+The server runs Lake without network access and excludes `.git` metadata from
+its workspace copy.
+A prepopulated `.lake/packages` directory or build cache alone leaves dependency
+resolution unverified.
 
 The `lake check` phase defaults to 240 seconds.
 To increase it, set `LEAN_PLUGIN_LAKE_CHECK_TIMEOUT_SECONDS` in the server's
@@ -33,7 +36,7 @@ Configure the MCP client to wait longer than the selected limit plus 25 seconds
 for the sandbox probes.
 A server-side timeout returns `unavailable`.
 
-Use elan and the existing Lean editor extension for local editing.
+For local editing, use elan and the [official Lean 4 extension for VS Code][editor].
 The server reports verification as unavailable when Linux isolation or the exact
 toolchain is missing; it does not run Lean directly as a fallback.
 
@@ -50,8 +53,8 @@ An `unavailable` result is not a proof failure and must not count as a pass.
 An `invalid_input` result means the requested file is not eligible for
 diagnostics.
 
-See the [skill](skills/lean/SKILL.md) for when to use each check and how to
-relate a proof to implementation behavior.
+Use the Lean skill already available in your agent environment for guidance on
+when to use each check and how to relate a proof to implementation behavior.
 
+[editor]: https://marketplace.visualstudio.com/items?itemName=leanprover.lean4
 [release]: https://github.com/leanprover/lean4/releases/tag/v4.36.0
-[mathlib]: skills/lean/references/proof-verification.md#mathlib
