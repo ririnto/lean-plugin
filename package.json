@@ -15,7 +15,7 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p src/tsconfig.build.json",
     "check": "run-p check:*",
     "check:markdownlint-cli2": "markdownlint-cli2",
     "check:test": "node --test scripts/test-consumer.mjs",
