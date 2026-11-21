@@ -13,14 +13,16 @@ It does not ship or download Lean, Mathlib, or project dependencies.
    adapter to run.
    Keep tokens, environment files, sockets, and unrelated source out of this
    workspace.
-   For a project that needs Mathlib, provision its compatible release and
-   required imports before starting MCP.
 3. Install the package with Node.js 24 or later.
    Configure your MCP client to start the installed `lean-plugin` executable
    with the following environment variables:
 
    - `LEAN_PLUGIN_PROJECT`: Absolute path to the approved Lake workspace root.
    - `LEAN_PLUGIN_TOOLCHAIN`: Absolute path to the unpacked Lean Linux release.
+
+Lean core and Std are the verified default.
+Mathlib support through the offline MCP is unverified.
+See the [Mathlib verification criteria][mathlib].
 
 The `lake check` phase defaults to 240 seconds.
 To increase it, set `LEAN_PLUGIN_LAKE_CHECK_TIMEOUT_SECONDS` in the server's
@@ -52,3 +54,4 @@ See the [skill](skills/lean/SKILL.md) for when to use each check and how to
 relate a proof to implementation behavior.
 
 [release]: https://github.com/leanprover/lean4/releases/tag/v4.36.0
+[mathlib]: skills/lean/references/proof-verification.md#mathlib

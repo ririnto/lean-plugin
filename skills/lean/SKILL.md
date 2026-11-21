@@ -1,7 +1,8 @@
 ---
 name: lean
-description: Prove algorithm properties in an approved Lean project and verify
-the proof through MCP.
+description: >-
+  Prove algorithm properties in an approved Lean project and verify the proof
+  through MCP.
 ---
 
 # Lean verification
@@ -20,6 +21,5 @@ Use TLA+ for system flows and state transitions.
    proof results and implementation evidence separately.
 
 Start with Lean core and Std.
-Read [proof setup and verification](references/proof-verification.md) when you
-need to prepare the Lake package, add Mathlib, or interpret a verification
-result.
+Read [proof setup and verification](references/proof-verification.md) to
+prepare the Lake package, assess Mathlib support, or interpret a result.
