@@ -11,14 +11,15 @@
     "lean-plugin": "dist/server.js"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "assets/verification.html"
   ],
   "type": "module",
   "scripts": {
     "build": "tsc -p src/tsconfig.build.json",
     "check": "run-p check:*",
     "check:markdownlint-cli2": "markdownlint-cli2",
-    "check:test": "node --test scripts/test-consumer.mjs",
+    "check:test": "node --test",
     "check:typescript": "tsc",
     "check:ultracite": "ultracite check",
     "fix": "run-p fix:*",
