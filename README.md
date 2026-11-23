@@ -56,5 +56,12 @@ diagnostics.
 Use the Lean skill already available in your agent environment for guidance on
 when to use each check and how to relate a proof to implementation behavior.
 
+## Thread verification report
+
+In an MCP Apps host that supports thread entrypoints, open **Lean verification**
+in a thread to see the report.
+Select **Verify** to run `lean_verify` and see its status and output in that tab.
+The report starts idle.
+
 [editor]: https://marketplace.visualstudio.com/items?itemName=leanprover.lean4
 [release]: https://github.com/leanprover/lean4/releases/tag/v4.36.0

@@ -3,6 +3,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { finished } from "node:stream/promises";
 import { test } from "node:test";
 
 import { Client } from "@modelcontextprotocol/client";
@@ -58,6 +60,8 @@ await test(
     }
 
     const { LEAN_PLUGIN_TOOLCHAIN } = process.env;
+    const proofChecksUnavailable =
+      process.platform !== "linux" || LEAN_PLUGIN_TOOLCHAIN === undefined;
     const project = path.join(consumer, "fixture");
     await mkdir(project);
     await Promise.all([
@@ -83,30 +87,82 @@ await test(
       name: "lean-plugin-consumer",
       version: "0.0.0"
     });
+    let traceOutput = "";
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [server],
+      env: {
+        LEAN_PLUGIN_PROJECT: project,
+        LEAN_PLUGIN_TRACE: "1",
+        ...(LEAN_PLUGIN_TOOLCHAIN === undefined
+          ? {}
+          : { LEAN_PLUGIN_TOOLCHAIN })
+      },
+      stderr: "pipe"
+    });
+    const { stderr } = transport;
+    assert.ok(stderr instanceof Readable);
+    stderr.on("data", (chunk) => {
+      const text = String(chunk);
+      traceOutput += text;
+      process.stderr.write(text);
+    });
     context.after(async () => {
       await client.close();
     });
-    await client.connect(
-      new StdioClientTransport({
-        command: process.execPath,
-        args: [server],
-        env: {
-          LEAN_PLUGIN_PROJECT: project,
-          LEAN_PLUGIN_TRACE: "1",
-          ...(LEAN_PLUGIN_TOOLCHAIN === undefined
-            ? {}
-            : { LEAN_PLUGIN_TOOLCHAIN })
-        },
-        stderr: "inherit"
-      })
-    );
+    await client.connect(transport);
     assert.equal(client.getServerVersion()?.name, "lean-plugin");
 
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(({ name }) => name).toSorted(), [
       "lean_diagnostics",
+      "lean_open_verification",
       "lean_verify"
     ]);
+    const opener = tools.find(({ name }) => name === "lean_open_verification");
+    assert.ok(opener, "the thread entrypoint tool must be registered");
+    assert.equal(opener.title, "Lean verification");
+    assert.equal(opener.inputSchema.type, "object");
+    assert.deepEqual(opener.inputSchema.properties, {});
+    const openerMetadata = z
+      .object({
+        ui: z.object({
+          resourceUri: z.literal("ui://lean-plugin/verification"),
+          visibility: z.tuple([z.literal("app")])
+        }),
+        "openai/ui": z.object({
+          entrypoints: z.tuple([z.object({ type: z.literal("thread") })])
+        })
+      })
+      .parse(opener._meta);
+
+    const opened = await client.callTool({
+      name: "lean_open_verification",
+      arguments: {}
+    });
+    assert.equal(opened.isError ?? false, false);
+    assert.ok(
+      opened.content.some(
+        (item) => item.type === "text" && item.text.trim() !== ""
+      )
+    );
+
+    const appResource = z
+      .object({
+        contents: z.tuple([
+          z.object({
+            uri: z.literal(openerMetadata.ui.resourceUri),
+            mimeType: z.literal("text/html;profile=mcp-app"),
+            text: z.string()
+          })
+        ])
+      })
+      .parse(await client.readResource({ uri: openerMetadata.ui.resourceUri }));
+    assert.match(
+      appResource.contents[0].text,
+      /<title>Lean verification<\/title>/u
+    );
+    assert.match(appResource.contents[0].text, />\s*Verify\s*<\/button>/u);
 
     /**
      * @param {string} label Test phase for CI diagnostics.
@@ -132,7 +188,7 @@ await test(
       return response;
     };
 
-    if (process.platform !== "linux" || LEAN_PLUGIN_TOOLCHAIN === undefined) {
+    if (proofChecksUnavailable) {
       const proof = await call("unconfigured proof", "lean_verify", {});
       const diagnostic = await call(
         "unconfigured diagnostics",
@@ -179,5 +235,13 @@ await test(
       assert.equal(unprepared.status, "unavailable", unprepared.output);
       assert.match(unprepared.output, /lake-manifest\.json/u);
     }
+
+    await client.close();
+    await finished(stderr, { cleanup: true });
+    assert.equal(
+      traceOutput.split("[lean-plugin] lean version started").length - 1,
+      proofChecksUnavailable ? 0 : 4,
+      "only the explicit verification calls and eligible diagnostic can start verifier phases"
+    );
   }
 );

@@ -11,9 +11,59 @@ const metadata: unknown = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf-8")
 );
 const { version } = z.object({ version: z.string() }).parse(metadata);
+const verificationResourceUri = "ui://lean-plugin/verification";
+const verificationMimeType = "text/html;profile=mcp-app";
 
 serveStdio(() => {
   const server = new McpServer({ name: "lean-plugin", version });
+
+  server.registerResource(
+    "lean-verification",
+    verificationResourceUri,
+    {
+      title: "Lean verification",
+      mimeType: verificationMimeType
+    },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: verificationMimeType,
+          text: await readFile(
+            new URL("../assets/verification.html", import.meta.url),
+            "utf-8"
+          )
+        }
+      ]
+    })
+  );
+
+  server.registerTool(
+    "lean_open_verification",
+    {
+      title: "Lean verification",
+      description:
+        "Open a per-thread report for manually running Lean package verification.",
+      inputSchema: z.object({}),
+      _meta: {
+        ui: {
+          resourceUri: verificationResourceUri,
+          visibility: ["app"]
+        },
+        "openai/ui": {
+          entrypoints: [{ type: "thread" }]
+        }
+      }
+    },
+    () => ({
+      content: [
+        {
+          type: "text",
+          text: "Lean verification report opened. Select Verify in the app to run the sandboxed package check."
+        }
+      ]
+    })
+  );
 
   server.registerTool(
     "lean_diagnostics",

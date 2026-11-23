@@ -11,7 +11,8 @@
     "lean-plugin": "dist/server.js"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "assets/verification.html"
   ],
   "type": "module",
   "scripts": {

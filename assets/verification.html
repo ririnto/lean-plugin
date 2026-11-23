@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lean verification</title>
+    <style>
+      body {
+        font:
+          1rem system-ui,
+          sans-serif;
+        margin: 0;
+        padding: 1rem;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Lean verification</h1>
+      <p>Run the sandboxed Lake check for this package's default targets.</p>
+      <p id="status" role="status">Waiting for the MCP Apps host…</p>
+      <button id="verify" type="button" disabled>Verify</button>
+      <pre id="output" hidden></pre>
+    </main>
+    <script>
+      const status = document.getElementById("status");
+      const button = document.getElementById("verify");
+      const output = document.getElementById("output");
+      let nextId = 1;
+      let targetOrigin = "*";
+      let hostReady = false;
+      let pending;
+
+      const isRecord = (value) =>
+        value !== null && typeof value === "object" && !Array.isArray(value);
+      const show = (message, details = "") => {
+        status.textContent = message;
+        output.textContent = details;
+        output.hidden = details === "";
+      };
+      const request = ({ method, params, origin, timeout }) =>
+        new Promise((resolve, reject) => {
+          if (pending) {
+            reject(new Error("Another host request is in progress."));
+            return;
+          }
+          const id = nextId++;
+          let timer;
+          const finish = (handler, value) => {
+            window.clearTimeout(timer);
+            pending = undefined;
+            handler(value);
+          };
+          pending = {
+            id,
+            origin,
+            resolve: (value) => finish(resolve, value),
+            reject: (error) => finish(reject, error)
+          };
+          timer = window.setTimeout(
+            () =>
+              pending?.reject(new Error("The host did not respond in time.")),
+            timeout
+          );
+          try {
+            window.parent.postMessage(
+              { jsonrpc: "2.0", id, method, params },
+              origin
+            );
+          } catch (error) {
+            pending.reject(error);
+          }
+        });
+
+      const receive = (event) => {
+        const { data } = event;
+        if (
+          event.source !== window.parent ||
+          (targetOrigin !== "*" && event.origin !== targetOrigin) ||
+          !isRecord(data) ||
+          data.jsonrpc !== "2.0"
+        ) {
+          return;
+        }
+        if (
+          hostReady &&
+          (data.method === "ping" || data.method === "ui/resource-teardown")
+        ) {
+          if (typeof data.id === "string" || typeof data.id === "number") {
+            window.parent.postMessage(
+              { jsonrpc: "2.0", id: data.id, result: {} },
+              targetOrigin
+            );
+          }
+          return;
+        }
+        if (
+          !pending ||
+          typeof data.method === "string" ||
+          data.id !== pending.id ||
+          (pending.origin !== "*" && event.origin !== pending.origin)
+        ) {
+          return;
+        }
+        if (isRecord(data.error)) {
+          pending.reject(
+            new Error(
+              typeof data.error.message === "string"
+                ? data.error.message
+                : "Host request failed."
+            )
+          );
+        } else if (Object.hasOwn(data, "result")) {
+          pending.resolve({ result: data.result, origin: event.origin });
+        } else {
+          pending.reject(new Error("The host returned an invalid response."));
+        }
+      };
+      window.addEventListener("message", receive);
+
+      button.addEventListener("click", async () => {
+        if (button.disabled) {
+          return;
+        }
+        button.disabled = true;
+        show("Verification is running…");
+        try {
+          const { result } = await request({
+            method: "tools/call",
+            params: { name: "lean_verify", arguments: {} },
+            origin: targetOrigin,
+            timeout: 630_000
+          });
+          const content =
+            isRecord(result) && Array.isArray(result.content)
+              ? result.content
+              : [];
+          const text = content.find(
+            (item) => isRecord(item) && item.type === "text"
+          )?.text;
+          if (typeof text !== "string") {
+            throw new Error("The host returned no verification report.");
+          }
+          const report = JSON.parse(text);
+          if (
+            !isRecord(report) ||
+            typeof report.status !== "string" ||
+            typeof report.output !== "string"
+          ) {
+            throw new Error(
+              "The host returned an unreadable verification report."
+            );
+          }
+          show(`Verification ${report.status}.`, report.output);
+        } catch (error) {
+          show(
+            "The verification request could not be completed.",
+            error instanceof Error
+              ? error.message
+              : "The host returned an error."
+          );
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      const connect = async () => {
+        if (window.parent === window) {
+          show("Open this report in an MCP Apps host to enable verification.");
+          return;
+        }
+        try {
+          const { result, origin } = await request({
+            method: "ui/initialize",
+            params: {
+              appInfo: { name: "Lean verification", version: "1.0.0" },
+              appCapabilities: {},
+              protocolVersion: "2026-01-26"
+            },
+            origin: "*",
+            timeout: 15_000
+          });
+          if (
+            !isRecord(result) ||
+            typeof result.protocolVersion !== "string" ||
+            result.protocolVersion.length === 0
+          ) {
+            throw new Error("The host returned an invalid MCP Apps handshake.");
+          }
+          targetOrigin = origin === "null" || origin === "" ? "*" : origin;
+          window.parent.postMessage(
+            {
+              jsonrpc: "2.0",
+              method: "ui/notifications/initialized",
+              params: {}
+            },
+            targetOrigin
+          );
+          hostReady = true;
+          if (!isRecord(result.hostCapabilities?.serverTools)) {
+            throw new Error(
+              "This host does not support app-initiated server tool calls."
+            );
+          }
+          button.disabled = false;
+          show("Ready. Select Verify to run the package check.");
+        } catch (error) {
+          show(
+            "Lean verification is unavailable.",
+            error instanceof Error
+              ? error.message
+              : "The MCP Apps host returned an error."
+          );
+        }
+      };
+      void connect();
+    </script>
+  </body>
+</html>
