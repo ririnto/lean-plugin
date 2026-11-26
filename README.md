@@ -57,8 +57,10 @@ It does not run Lean directly as a fallback.
 - `lean_verify`: Pass an empty object.
   Get Lake's kernel replay and standard-axiom check for the default targets.
 
-Both tools return `status` and `output`.
-The `status` field distinguishes these results:
+Both tools return one MCP text item in `content`.
+Parse `content[0].text` as JSON to read `status` and `output`.
+The outer MCP result sets `isError` to `true` for every status except `passed`.
+Read `status` to distinguish a rejected check from an unavailable verifier.
 
 | Status | Meaning |
 | --- | --- |
