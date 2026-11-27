@@ -164,12 +164,11 @@ await test(
     );
     assert.match(appResource.contents[0].text, />\s*Verify\s*<\/button>/u);
 
-    /**
-     * @param {string} label Test phase for CI diagnostics.
-     * @param {"lean_diagnostics" | "lean_verify"} name Tool to call.
-     * @param {{ file?: string }} input MCP tool arguments.
-     */
-    const call = async (label, name, input) => {
+    const call = async (
+      label: string,
+      name: "lean_diagnostics" | "lean_verify",
+      input: { file?: string }
+    ) => {
       process.stderr.write(`[consumer] ${label} (${name})\n`);
       const { content, isError } = await client.callTool(
         {
